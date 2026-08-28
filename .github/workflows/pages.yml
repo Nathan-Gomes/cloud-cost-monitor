@@ -1,0 +1,39 @@
+name: Publish demo dashboard
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["frontend/**", "backend/app/sample_data.py", "backend/app/detectors.py", "scripts_export_demo.py"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r backend/requirements.txt
+      - run: python scripts_export_demo.py
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: frontend/dist }
+      - id: deployment
+        uses: actions/deploy-pages@v4
+

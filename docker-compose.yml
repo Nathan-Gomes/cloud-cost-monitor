@@ -1,0 +1,31 @@
+services:
+  api:
+    build: ./backend
+    environment:
+      APP_MODE: demo
+      DATABASE_PATH: /app/data/cloud_costs.db
+      ALLOWED_ORIGINS: http://localhost:5173
+    volumes:
+      - cloud-cost-data:/app/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 4s
+      retries: 4
+
+  dashboard:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+
+volumes:
+  cloud-cost-data:
+

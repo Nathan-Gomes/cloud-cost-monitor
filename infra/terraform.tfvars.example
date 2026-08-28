@@ -1,0 +1,5 @@
+container_image  = "123456789012.dkr.ecr.ca-central-1.amazonaws.com/cloud-cost-monitor:latest"
+database_password = "replace-with-a-secret"
+monthly_budget   = 10000
+alert_email      = ""
+
