@@ -45,6 +45,35 @@ def test_unattached_volume_is_flagged():
     assert findings[0].finding_type == "unattached_storage"
 
 
+def test_stale_snapshot_is_flagged_after_retention_window():
+    snapshot = resource(
+        resource_id="snap-test",
+        resource_type="EBS snapshot",
+        service="Amazon EBS",
+        state="completed",
+        age_days=120,
+        monthly_cost=18,
+        utilization_pct=None,
+    )
+    findings = detect_resource_findings([snapshot])
+    assert len(findings) == 1
+    assert findings[0].finding_type == "stale_snapshot"
+    assert findings[0].severity == "low"
+
+
+def test_recent_snapshot_is_not_flagged():
+    snapshot = resource(
+        resource_id="snap-test",
+        resource_type="EBS snapshot",
+        service="Amazon EBS",
+        state="completed",
+        age_days=45,
+        monthly_cost=18,
+        utilization_pct=None,
+    )
+    assert detect_resource_findings([snapshot]) == []
+
+
 def test_cost_spike_uses_trailing_median():
     today = date.today()
     costs = [CostRecord(date=today - timedelta(days=14 - index), service="Data Transfer", amount=10) for index in range(14)]
@@ -54,3 +83,9 @@ def test_cost_spike_uses_trailing_median():
     assert findings[0].severity == "critical"
     assert findings[0].monthly_impact == 540
 
+
+def test_cost_spike_ignores_zero_baseline():
+    today = date.today()
+    costs = [CostRecord(date=today - timedelta(days=14 - index), service="AWS Lambda", amount=0) for index in range(14)]
+    costs.append(CostRecord(date=today, service="AWS Lambda", amount=8))
+    assert detect_cost_spikes(costs) == []
