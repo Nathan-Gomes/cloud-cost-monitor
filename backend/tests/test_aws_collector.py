@@ -48,7 +48,9 @@ def test_collect_costs_reads_every_cost_explorer_page(mock_client):
     ]
     mock_client.return_value = client
 
-    records = AwsCollector(("ca-central-1",)).collect_costs(days=30)
+    with patch("app.aws_collector.datetime") as mock_datetime:
+        mock_datetime.now.return_value = datetime(2026, 10, 10, 9, 0, tzinfo=timezone.utc)
+        records = AwsCollector(("ca-central-1",)).collect_costs(days=30)
 
     assert [
         (str(record.date), record.service, record.amount) for record in records
@@ -62,6 +64,10 @@ def test_collect_costs_reads_every_cost_explorer_page(mock_client):
     second_request = client.get_cost_and_usage.call_args_list[1].kwargs
     assert first_request["Granularity"] == "DAILY"
     assert first_request["GroupBy"] == [{"Type": "DIMENSION", "Key": "SERVICE"}]
+    assert first_request["TimePeriod"] == {
+        "Start": "2026-09-10",
+        "End": "2026-10-10",
+    }
     assert "NextPageToken" not in first_request
     assert second_request["NextPageToken"] == "page-2"
 

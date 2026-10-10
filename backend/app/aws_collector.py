@@ -14,7 +14,9 @@ class AwsCollector:
 
     def collect_costs(self, days: int = 90) -> list[CostRecord]:
         client = boto3.client("ce", region_name="us-east-1")
-        end = datetime.now(timezone.utc).date() + timedelta(days=1)
+        # Cost Explorer's end date is exclusive. Stop at today so every daily value
+        # used by the spike detector represents a fully completed UTC day.
+        end = datetime.now(timezone.utc).date()
         start = end - timedelta(days=days)
         records: list[CostRecord] = []
         request: dict[str, Any] = {
