@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from hashlib import sha1
 from statistics import median
 
@@ -108,38 +108,51 @@ def detect_resource_findings(resources: list[ResourceRecord]) -> list[Finding]:
     return findings
 
 
-def detect_cost_spikes(costs: list[CostRecord], threshold_pct: float = 35) -> list[Finding]:
-    by_service: dict[str, list[CostRecord]] = defaultdict(list)
+def detect_cost_spikes(
+    costs: list[CostRecord], threshold_pct: float = 35
+) -> list[Finding]:
+    daily_by_service: dict[str, dict[date, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    regions_by_service: dict[str, set[str]] = defaultdict(set)
     for record in costs:
-        by_service[record.service].append(record)
+        daily_by_service[record.service][record.date] += record.amount
+        regions_by_service[record.service].add(record.region)
 
     findings: list[Finding] = []
     now = datetime.now(timezone.utc)
-    for service, records in by_service.items():
-        ordered = sorted(records, key=lambda record: record.date)
+    for service, daily_amounts in daily_by_service.items():
+        ordered = sorted(daily_amounts.items())
         if len(ordered) < 8:
             continue
-        latest = ordered[-1]
-        baseline = median(record.amount for record in ordered[-15:-1])
+        latest_date, latest_amount = ordered[-1]
+        baseline = median(amount for _, amount in ordered[-15:-1])
         if baseline <= 0:
             continue
-        increase_pct = ((latest.amount - baseline) / baseline) * 100
-        monthly_impact = max(0, (latest.amount - baseline) * 30)
+        increase_pct = ((latest_amount - baseline) / baseline) * 100
+        monthly_impact = max(0, (latest_amount - baseline) * 30)
         if increase_pct < threshold_pct or monthly_impact < 20:
             continue
-        severity = "critical" if increase_pct >= 100 else "high" if increase_pct >= 60 else "medium"
+        severity = (
+            "critical"
+            if increase_pct >= 100
+            else "high"
+            if increase_pct >= 60
+            else "medium"
+        )
+        regions = regions_by_service[service]
         findings.append(
             Finding(
-                id=_finding_id("cost-spike", service, str(latest.date)),
+                id=_finding_id("cost-spike", service, str(latest_date)),
                 severity=severity,
                 finding_type="cost_spike",
                 title=f"Unusual {service} cost increase",
                 service=service,
-                region=latest.region,
+                region=next(iter(regions)) if len(regions) == 1 else "global",
                 detected_at=now,
                 monthly_impact=round(monthly_impact, 2),
                 evidence=(
-                    f"Latest daily spend was ${latest.amount:,.2f}, {increase_pct:.0f}% above "
+                    f"Latest daily spend was ${latest_amount:,.2f}, {increase_pct:.0f}% above "
                     f"the trailing 14-day median of ${baseline:,.2f}."
                 ),
                 recommendation="Review service usage, recent deployments, and cost-allocation tags before the next billing cycle.",
@@ -148,8 +161,11 @@ def detect_cost_spikes(costs: list[CostRecord], threshold_pct: float = 35) -> li
     return findings
 
 
-def run_detectors(costs: list[CostRecord], resources: list[ResourceRecord]) -> list[Finding]:
+def run_detectors(
+    costs: list[CostRecord], resources: list[ResourceRecord]
+) -> list[Finding]:
     findings = detect_resource_findings(resources) + detect_cost_spikes(costs)
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    return sorted(findings, key=lambda finding: (order[finding.severity], -finding.monthly_impact))
-
+    return sorted(
+        findings, key=lambda finding: (order[finding.severity], -finding.monthly_impact)
+    )

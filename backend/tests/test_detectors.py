@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.detectors import detect_cost_spikes, detect_resource_findings
 from app.models import CostRecord, ResourceRecord
@@ -75,8 +75,13 @@ def test_recent_snapshot_is_not_flagged():
 
 
 def test_cost_spike_uses_trailing_median():
-    today = date.today()
-    costs = [CostRecord(date=today - timedelta(days=14 - index), service="Data Transfer", amount=10) for index in range(14)]
+    today = datetime.now(timezone.utc).date()
+    costs = [
+        CostRecord(
+            date=today - timedelta(days=14 - index), service="Data Transfer", amount=10
+        )
+        for index in range(14)
+    ]
     costs.append(CostRecord(date=today, service="Data Transfer", amount=28))
     findings = detect_cost_spikes(costs)
     assert len(findings) == 1
@@ -85,7 +90,68 @@ def test_cost_spike_uses_trailing_median():
 
 
 def test_cost_spike_ignores_zero_baseline():
-    today = date.today()
-    costs = [CostRecord(date=today - timedelta(days=14 - index), service="AWS Lambda", amount=0) for index in range(14)]
+    today = datetime.now(timezone.utc).date()
+    costs = [
+        CostRecord(
+            date=today - timedelta(days=14 - index), service="AWS Lambda", amount=0
+        )
+        for index in range(14)
+    ]
     costs.append(CostRecord(date=today, service="AWS Lambda", amount=8))
+    assert detect_cost_spikes(costs) == []
+
+
+def test_cost_spike_aggregates_accounts_into_daily_service_spend():
+    today = datetime.now(timezone.utc).date()
+    costs = []
+    for days_ago in range(14, 0, -1):
+        day = today - timedelta(days=days_ago)
+        costs.extend(
+            [
+                CostRecord(
+                    date=day, service="Amazon EC2", amount=100, account_id="platform"
+                ),
+                CostRecord(
+                    date=day, service="Amazon EC2", amount=1, account_id="sandbox"
+                ),
+            ]
+        )
+    costs.extend(
+        [
+            CostRecord(
+                date=today, service="Amazon EC2", amount=200, account_id="platform"
+            ),
+            CostRecord(
+                date=today, service="Amazon EC2", amount=1, account_id="sandbox"
+            ),
+        ]
+    )
+
+    findings = detect_cost_spikes(costs)
+
+    assert len(findings) == 1
+    assert findings[0].severity == "high"
+    assert findings[0].monthly_impact == 3000
+    assert "Latest daily spend was $201.00" in findings[0].evidence
+
+
+def test_cost_spike_requires_eight_distinct_days():
+    today = datetime.now(timezone.utc).date()
+    costs = []
+    for days_ago in range(3, -1, -1):
+        day = today - timedelta(days=days_ago)
+        costs.extend(
+            [
+                CostRecord(
+                    date=day, service="Amazon S3", amount=1, account_id="platform"
+                ),
+                CostRecord(
+                    date=day,
+                    service="Amazon S3",
+                    amount=100 if days_ago == 0 else 1,
+                    account_id="sandbox",
+                ),
+            ]
+        )
+
     assert detect_cost_spikes(costs) == []
