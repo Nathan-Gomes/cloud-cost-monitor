@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["frontend/**", "backend/app/sample_data.py", "backend/app/detectors.py", "scripts_export_demo.py"]
+    paths: ["frontend/**", "backend/app/sample_data.py", "backend/app/detectors.py", "backend/app/dashboard.py", "scripts_export_demo.py"]
 
 permissions:
   contents: read

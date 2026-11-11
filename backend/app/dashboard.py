@@ -12,9 +12,9 @@ def build_dashboard(costs: list[CostRecord], resources: list[ResourceRecord], fi
     previous_month = [record for record in costs if record.date.year == previous_month_year and record.date.month == previous_month_number]
 
     current_total = sum(record.amount for record in current_month)
-    elapsed_days = max(today.day, 1)
-    forecast = current_total / elapsed_days * 30.44
-    previous_comparable = sum(record.amount for record in previous_month if record.date.day <= elapsed_days)
+    completed_days = max((record.date.day for record in current_month), default=0)
+    forecast = current_total / completed_days * 30.44 if completed_days else 0
+    previous_comparable = sum(record.amount for record in previous_month if record.date.day <= completed_days)
     change_pct = ((current_total - previous_comparable) / previous_comparable * 100) if previous_comparable else 0
 
     daily: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
